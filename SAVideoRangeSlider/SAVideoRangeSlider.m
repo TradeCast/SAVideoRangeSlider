@@ -36,7 +36,9 @@
 @property (nonatomic) CGFloat frame_width;
 @property (nonatomic) Float64 durationSeconds;
 @property (nonatomic, strong) SAResizibleBubble *popoverBubble;
-
+@property (nonatomic, strong) NSTimer *timer;
+@property bool zoomed;
+@property double zoomFactor;
 @end
 
 @implementation SAVideoRangeSlider
@@ -50,14 +52,14 @@
     
     self = [super initWithFrame:frame];
     if (self) {
+        _zoomed = false;
+        _zoomFactor = 1.0;
         
         _frame_width = frame.size.width;
         
         int thumbWidth = ceil(frame.size.width*0.05);
         
-        _bgView = [[UIControl alloc] initWithFrame:CGRectMake(thumbWidth-BG_VIEW_BORDERS_SIZE, 0, frame.size.width-(thumbWidth*2)+BG_VIEW_BORDERS_SIZE*2, frame.size.height)];
-        _bgView.layer.borderColor = [UIColor grayColor].CGColor;
-        _bgView.layer.borderWidth = BG_VIEW_BORDERS_SIZE;
+        _bgView = [[UIControl alloc] initWithFrame:CGRectMake(0, 0, frame.size.width, frame.size.height)];
         [self addSubview:_bgView];
         
         _videoUrl = videoUrl;
@@ -159,7 +161,7 @@
 
 -(void)setMaxGap:(NSInteger)maxGap{
     _leftPosition = 0;
-    _rightPosition = _frame_width*maxGap/_durationSeconds;
+    _rightPosition = maxGap > _durationSeconds ? _frame_width : _frame_width*maxGap/_durationSeconds;
     _maxGap = maxGap;
 }
 
@@ -206,15 +208,48 @@
         
         [self setNeedsLayout];
         
-        [self delegateNotification];
-        
+        if ([_delegate respondsToSelector:@selector(videoRange:didChangeLeftPosition:)]){
+            if (_zoomed)
+                [_delegate videoRange:self didChangeLeftPosition:((-_bgView.frame.origin.x + _leftPosition) / _frame_width) * _durationSeconds];
+            else
+                [_delegate videoRange:self didChangeLeftPosition:self.leftPosition];
+        }
     }
     
-    _popoverBubble.alpha = 1;
+//    _popoverBubble.alpha = 1;
     
     [self setTimeLabel];
     
+    if(!_zoomed){
+        [_timer invalidate];
+        _timer = [NSTimer scheduledTimerWithTimeInterval:0.5 target:self selector:@selector(zoomLeft) userInfo:nil repeats:false];
+    }
+    
     if (gesture.state == UIGestureRecognizerStateEnded){
+        [_timer invalidate];
+        
+        if(_zoomed){
+            _zoomed = false;
+            
+            _rightPosition = ((-_bgView.frame.origin.x + _rightPosition) / _frame_width) * (_frame_width / _zoomFactor);
+            _leftPosition = ((-_bgView.frame.origin.x + _leftPosition) / _frame_width) * (_frame_width / _zoomFactor);
+            
+            [UIView animateWithDuration:0.3 animations:^{
+                CGRect theFrame = _bgView.frame;
+                theFrame.size.width = _bgView.frame.size.width / _zoomFactor;
+                theFrame.origin.x = 0;
+                _bgView.frame = theFrame;
+            }];
+            
+            _frame_width = _frame_width / _zoomFactor;
+            for(UIView *v in _bgView.subviews){
+                [v removeFromSuperview];
+            }
+            
+            _zoomFactor = 1.0;
+            [self getMovieFrame];
+        }
+
         [self hideBubble:_popoverBubble];
     }
 }
@@ -250,18 +285,86 @@
         
         [self setNeedsLayout];
         
-        [self delegateNotification];
-        
+        if ([_delegate respondsToSelector:@selector(videoRange:didChangeRightPosition:)]){
+            if (_zoomed)
+                [_delegate videoRange:self didChangeRightPosition:((-_bgView.frame.origin.x + _rightPosition) / _frame_width) * _durationSeconds];
+            else
+                [_delegate videoRange:self didChangeRightPosition:self.rightPosition];
+        }
     }
     
-    _popoverBubble.alpha = 1;
+//    _popoverBubble.alpha = 1;
     
     [self setTimeLabel];
     
-    
+    if(!_zoomed){
+        [_timer invalidate];
+        _timer = [NSTimer scheduledTimerWithTimeInterval:0.5 target:self selector:@selector(zoomRight) userInfo:nil repeats:false];
+    }
+
     if (gesture.state == UIGestureRecognizerStateEnded){
+        [_timer invalidate];
+        
+        if(_zoomed){
+            _zoomed = false;
+            
+            _rightPosition = ((-_bgView.frame.origin.x + _rightPosition) / _frame_width) * (_frame_width / _zoomFactor);
+            _leftPosition = ((-_bgView.frame.origin.x + _leftPosition) / _frame_width) * (_frame_width / _zoomFactor);
+            
+            [UIView animateWithDuration:0.3 animations:^{
+                CGRect theFrame = _bgView.frame;
+                theFrame.size.width = _bgView.frame.size.width / _zoomFactor;
+                theFrame.origin.x = 0;
+                _bgView.frame = theFrame;
+            }];
+
+            _frame_width = _frame_width / _zoomFactor;
+            for(UIView *v in _bgView.subviews){
+                [v removeFromSuperview];
+            }
+            _zoomFactor = 1.0;
+            [self getMovieFrame];
+        }
         [self hideBubble:_popoverBubble];
     }
+}
+
+- (void)zoomRight {
+    _zoomed = true;
+    _zoomFactor = MAX(_durationSeconds/3,1);
+
+    _leftPosition = (_rightPosition - _rightPosition * _zoomFactor) + (_leftPosition * _zoomFactor);
+    
+    [UIView animateWithDuration:0.3 animations:^{
+        CGRect theFrame = _bgView.frame;
+        theFrame.size.width = _bgView.frame.size.width * _zoomFactor;
+        theFrame.origin.x = _rightPosition - _rightPosition * _zoomFactor;
+        _bgView.frame = theFrame;
+    }];
+    _frame_width = _frame_width * _zoomFactor;
+    for(UIView *v in _bgView.subviews){
+        [v removeFromSuperview];
+    }
+    [self getMovieFrame];
+}
+
+- (void)zoomLeft {
+    _zoomed = true;
+    _zoomFactor = MAX(_durationSeconds/3,1);
+    
+    _rightPosition = (_leftPosition - _leftPosition * _zoomFactor) + (_rightPosition * _zoomFactor);
+    
+    [UIView animateWithDuration:0.3 animations:^{
+        CGRect theFrame = _bgView.frame;
+        theFrame.size.width = _bgView.frame.size.width * _zoomFactor;
+        theFrame.origin.x = _leftPosition - _leftPosition * _zoomFactor;
+        _bgView.frame = theFrame;
+    }];
+    _frame_width = _frame_width * _zoomFactor;
+    for(UIView *v in _bgView.subviews){
+        [v removeFromSuperview];
+    }
+    [self getMovieFrame];
 }
 
 
@@ -289,7 +392,7 @@
         
     }
     
-    _popoverBubble.alpha = 1;
+//    _popoverBubble.alpha = 1;
     
     [self setTimeLabel];
     
@@ -330,19 +433,28 @@
     
     AVAsset *myAsset = [[AVURLAsset alloc] initWithURL:_videoUrl options:nil];
     self.imageGenerator = [AVAssetImageGenerator assetImageGeneratorWithAsset:myAsset];
+    self.imageGenerator.appliesPreferredTrackTransform = true;
     
     if ([self isRetina]){
         self.imageGenerator.maximumSize = CGSizeMake(_bgView.frame.size.width*2, _bgView.frame.size.height*2);
     } else {
         self.imageGenerator.maximumSize = CGSizeMake(_bgView.frame.size.width, _bgView.frame.size.height);
     }
+
+    int picWidth = 100;
     
-    int picWidth = 20;
+    AVAssetTrack* videoTrack = [[myAsset tracksWithMediaType:AVMediaTypeVideo] objectAtIndex:0];
+    CGSize size = [videoTrack naturalSize];    
+    if (size.height > size.width){
+        picWidth = 50;
+    }
     
     // First image
     NSError *error;
     CMTime actualTime;
-    CGImageRef halfWayImage = [self.imageGenerator copyCGImageAtTime:kCMTimeZero actualTime:&actualTime error:&error];
+    double offset = -_bgView.frame.origin.x/(_bgView.frame.size.width/_durationSeconds);
+    CMTime timeFrame = CMTimeMakeWithSeconds(0+offset, 600);
+    CGImageRef halfWayImage = [self.imageGenerator copyCGImageAtTime:timeFrame actualTime:&actualTime error:&error];
     if (halfWayImage != NULL) {
         UIImage *videoScreen;
         if ([self isRetina]){
@@ -353,6 +465,7 @@
         UIImageView *tmp = [[UIImageView alloc] initWithImage:videoScreen];
         CGRect rect=tmp.frame;
         rect.size.width=picWidth;
+        rect.origin.x = -_bgView.frame.origin.x;
         tmp.frame=rect;
         [_bgView addSubview:tmp];
         picWidth = tmp.frame.size.width;
@@ -361,11 +474,8 @@
     
     
     _durationSeconds = CMTimeGetSeconds([myAsset duration]);
-    
-    int picsCnt = ceil(_bgView.frame.size.width / picWidth);
-    
-    NSMutableArray *allTimes = [[NSMutableArray alloc] init];
-    
+
+    int picsCnt = ceil(_bgView.frame.size.width / _zoomFactor / picWidth);
     int time4Pic = 0;
     
     if ([[[UIDevice currentDevice] systemVersion] floatValue] >= 7.0){
@@ -373,12 +483,10 @@
         int prefreWidth=0;
         for (int i=1, ii=1; i<picsCnt; i++){
             time4Pic = i*picWidth;
-            
-            CMTime timeFrame = CMTimeMakeWithSeconds(_durationSeconds*time4Pic/_bgView.frame.size.width, 600);
-            
-            [allTimes addObject:[NSValue valueWithCMTime:timeFrame]];
-            
-            
+
+            double offset = -_bgView.frame.origin.x/(_bgView.frame.size.width/_durationSeconds);
+
+            CMTime timeFrame = CMTimeMakeWithSeconds(_durationSeconds*time4Pic/_bgView.frame.size.width+offset, 600);
             CGImageRef halfWayImage = [self.imageGenerator copyCGImageAtTime:timeFrame actualTime:&actualTime error:&error];
             
             UIImage *videoScreen;
@@ -388,15 +496,11 @@
                 videoScreen = [[UIImage alloc] initWithCGImage:halfWayImage];
             }
             
-            
-            
             UIImageView *tmp = [[UIImageView alloc] initWithImage:videoScreen];
-            
-            
-            
-            CGRect currentFrame = tmp.frame;
-            currentFrame.origin.x = ii*picWidth;
 
+            CGRect currentFrame = tmp.frame;
+            currentFrame.origin.x = ii*picWidth+-_bgView.frame.origin.x;
+            
             currentFrame.size.width=picWidth;
             prefreWidth+=currentFrame.size.width;
             
@@ -417,71 +521,9 @@
                 [_bgView addSubview:tmp];
             });
             
-            
-            
-            
             CGImageRelease(halfWayImage);
-            
         }
-        
-        
-        return;
     }
-    
-    for (int i=1; i<picsCnt; i++){
-        time4Pic = i*picWidth;
-        
-        CMTime timeFrame = CMTimeMakeWithSeconds(_durationSeconds*time4Pic/_bgView.frame.size.width, 600);
-        
-        [allTimes addObject:[NSValue valueWithCMTime:timeFrame]];
-    }
-    
-    NSArray *times = allTimes;
-    
-    __block int i = 1;
-    
-    [self.imageGenerator generateCGImagesAsynchronouslyForTimes:times
-                                              completionHandler:^(CMTime requestedTime, CGImageRef image, CMTime actualTime,
-                                                                  AVAssetImageGeneratorResult result, NSError *error) {
-                                                  
-                                                  if (result == AVAssetImageGeneratorSucceeded) {
-                                                      
-                                                      
-                                                      UIImage *videoScreen;
-                                                      if ([self isRetina]){
-                                                          videoScreen = [[UIImage alloc] initWithCGImage:image scale:2.0 orientation:UIImageOrientationUp];
-                                                      } else {
-                                                          videoScreen = [[UIImage alloc] initWithCGImage:image];
-                                                      }
-                                                      
-                                                      
-                                                      UIImageView *tmp = [[UIImageView alloc] initWithImage:videoScreen];
-                                                      
-                                                      int all = (i+1)*tmp.frame.size.width;
-                                                      
-                                                      
-                                                      CGRect currentFrame = tmp.frame;
-                                                      currentFrame.origin.x = i*currentFrame.size.width;
-                                                      if (all > _bgView.frame.size.width){
-                                                          int delta = all - _bgView.frame.size.width;
-                                                          currentFrame.size.width -= delta;
-                                                      }
-                                                      tmp.frame = currentFrame;
-                                                      i++;
-                                                      
-                                                      dispatch_async(dispatch_get_main_queue(), ^{
-                                                          [_bgView addSubview:tmp];
-                                                      });
-                                                      
-                                                  }
-                                                  
-                                                  if (result == AVAssetImageGeneratorFailed) {
-                                                      NSLog(@"Failed with error: %@", [error localizedDescription]);
-                                                  }
-                                                  if (result == AVAssetImageGeneratorCancelled) {
-                                                      NSLog(@"Canceled");
-                                                  }
-                                              }];
 }
 
 
