@@ -123,7 +123,7 @@
         _bubleText.font = [UIFont boldSystemFontOfSize:20];
         _bubleText.backgroundColor = [UIColor clearColor];
         _bubleText.textColor = [UIColor blackColor];
-        _bubleText.textAlignment = UITextAlignmentCenter;
+        _bubleText.textAlignment = NSTextAlignmentCenter;
         
         [_popoverBubble addSubview:_bubleText];
         
@@ -593,8 +593,8 @@
 - (NSString *)timeToStr:(CGFloat)time
 {
     // time - seconds
-    NSInteger min = floor(time / 60);
-    NSInteger sec = floor(time - min * 60);
+    int min = floor(time / 60);
+    int sec = floor(time - min * 60);
     NSString *minStr = [NSString stringWithFormat:min >= 10 ? @"%i" : @"0%i", min];
     NSString *secStr = [NSString stringWithFormat:sec >= 10 ? @"%i" : @"0%i", sec];
     return [NSString stringWithFormat:@"%@:%@", minStr, secStr];
