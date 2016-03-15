@@ -57,7 +57,7 @@
         
         _frame_width = frame.size.width;
         
-        int thumbWidth = ceil(frame.size.width*0.05);
+        int thumbWidth = ceil(25);
         
         _bgView = [[UIControl alloc] initWithFrame:CGRectMake(0, 0, frame.size.width, frame.size.height)];
         [self addSubview:_bgView];
